@@ -52,11 +52,12 @@ export default function OnboardingScreen() {
 
       const nombre = user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email ?? '';
 
-      const { error } = await supabase.from('perfiles').upsert({
-        id: user.id,
-        nombre,
-        carrera: carreraSeleccionada,
-      });
+      const { error } = await supabase.from('perfiles')
+        .update({
+          nombre: nombre,
+          carrera: carreraSeleccionada,
+        })
+        .eq('id', user.id);
 
       if (error) throw error;
       router.replace('/(tabs)');

@@ -15,6 +15,7 @@ type Participante = {
   id: number;
   usuario_id: string;
   rol: string;
+  estado_asistencia: string;
   perfiles: { nombre: string } | null;
 };
 
@@ -65,10 +66,13 @@ export default function ActivityDetail() {
       setUserId(user.id);
       const { data } = await supabase
         .from('actividades')
-        .select('id,titulo,categoria,fecha_hora,lugar,estado,cupos_min,cupos_max,recompensa,creador_id,participantes(id,usuario_id,rol,perfiles(nombre))')
+        //.select('id,titulo,categoria,fecha_hora,lugar,estado,cupos_min,cupos_max,recompensa,creador_id,participantes(id,usuario_id,rol,perfiles(nombre))')
+        .select('id,titulo,categoria,fecha_hora,lugar,estado,cupos_min,cupos_max,recompensa,creador_id,participantes(id,usuario_id,rol,estado_asistencia,perfiles(nombre))')
         .eq('id', id)
         .single();
-      if (data) setActividad(data as Actividad);
+      //if (data) setActividad(data as Actividad);
+      if (data) setActividad(data as unknown as Actividad);
+      
     } finally { setCargando(false); }
   }, [id]);
 
@@ -96,7 +100,7 @@ export default function ActivityDetail() {
   const chatAbierto = count >= actividad.cupos_min;
   const color = CAT_COLOR[actividad.categoria] ?? Colors.primary;
   const progreso = Math.min(count / actividad.cupos_max, 1);
-
+/*
   const unirse = async () => {
     setAccionando(true);
     try {
@@ -105,6 +109,22 @@ export default function ActivityDetail() {
       });
       if (error) throw error;
       await cargar();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo unir.');
+    } finally { setAccionando(false); }
+  };
+*/
+  const unirse = async () => {
+    setAccionando(true);
+    try {
+      // Invocar al RPC en lugar del insert directo para bloquear concurrencia
+      const { data, error } = await supabase.rpc('unirse_a_actividad_concurrente', {
+        p_actividad_id: Number(id),
+        p_usuario_id: userId
+      });
+      if (error) throw error;
+      if (data && !data.success) { Alert.alert('Atención', data.message); } 
+      else { await cargar(); }
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'No se pudo unir.');
     } finally { setAccionando(false); }
@@ -127,7 +147,41 @@ export default function ActivityDetail() {
       },
     ]);
   };
+const marcarAsistencia = async (participanteUid: string, estado: string) => {
+    setAccionando(true);
+    try {
+      const { error } = await supabase.from('participantes').update({ estado_asistencia: estado }).eq('actividad_id', Number(id)).eq('usuario_id', participanteUid);
+      if (error) throw error;
+      await cargar();
+    } catch (e: any) { Alert.alert('Error', 'No se pudo actualizar.'); } finally { setAccionando(false); }
+  };
 
+  const gestionarPresionAvatar = (participanteUid: string, nombre: string) => {
+    if (participanteUid === userId) return;
+    if (esCreador) {
+      Alert.alert('Asistencia', `¿${nombre} asistió?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Plantón ❌', style: 'destructive', onPress: () => marcarAsistencia(participanteUid, 'planton') },
+        { text: 'Asistió ✅', onPress: () => marcarAsistencia(participanteUid, 'asistio') },
+      ]);
+    } else {
+      Alert.alert('Denunciar', `¿Deseas reportar una incidencia contra ${nombre}?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Reportar', style: 'destructive', onPress: () => {
+            Alert.prompt('Reporte', 'Describe la falta (mín. 15 caracteres):', async (texto) => {
+              if (!texto || texto.length < 15) return Alert.alert('Error', 'Detalla más el reporte.');
+              try {
+                const { error } = await supabase.from('reportes_asistencia').insert({ reportante_id: userId, reportado_id: participanteUid, actividad_id: Number(id), detalles: texto });
+                if (error) throw error;
+                Alert.alert('Éxito', 'Denuncia enviada.');
+              } catch (err: any) { Alert.alert('Error', err.message); }
+            });
+          }
+        },
+      ]);
+    }
+  };
+  
   return (
     <View style={s.container}>
       {/* Header con degradado */}
@@ -184,15 +238,26 @@ export default function ActivityDetail() {
           <Text style={s.sectionTitle}>Participantes</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {actividad.participantes.map(p => (
-              <View key={p.id} style={s.avatarWrap}>
-                <View style={[s.avatar, { backgroundColor: p.rol === 'organizador' ? color : Colors.elevated }]}>
-                  <Text style={s.avatarTxt}>{iniciales(p.perfiles?.nombre ?? '?')}</Text>
-                </View>
-                <Text style={s.avatarName} numberOfLines={1}>
-                  {p.perfiles?.nombre?.split(' ')[0] ?? '—'}
+              <TouchableOpacity 
+            key={p.id} 
+            style={s.avatarWrap}
+            disabled={p.usuario_id === userId}
+            onPress={() => gestionarPresionAvatar(p.usuario_id, p.perfiles?.nombre ?? 'Usuario')}
+          >
+            <View style={[s.avatar, { backgroundColor: p.rol === 'organizador' ? color : Colors.elevated }]}>
+              <Text style={s.avatarTxt}>{iniciales(p.perfiles?.nombre ?? '?')}</Text>
+            </View>
+            <Text style={s.avatarName} numberOfLines={1}>{p.perfiles?.nombre?.split(' ')[0] ?? '—'}</Text>
+            {p.rol === 'organizador' ? (
+              <Text style={[s.avatarRole, { color }]}>★ org.</Text>
+            ) : (
+              esCreador && p.estado_asistencia !== 'pendiente' && (
+                <Text style={{ fontSize: 9, textAlign: 'center', color: p.estado_asistencia === 'asistio' ? Colors.success : Colors.error }}>
+                  {p.estado_asistencia === 'asistio' ? 'Asistió' : 'Plantón'}
                 </Text>
-                {p.rol === 'organizador' && <Text style={[s.avatarRole, { color }]}>★ org.</Text>}
-              </View>
+              )
+            )}
+          </TouchableOpacity>
             ))}
           </ScrollView>
         </View>

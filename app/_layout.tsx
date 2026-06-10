@@ -80,7 +80,7 @@ export default function RootLayout() {
         }
         return;
       }
-
+      /*
       // Verificar correo institucional
       const email = session.user?.email ?? '';
       if (!email.endsWith('@ucsp.edu.pe')) {
@@ -89,15 +89,21 @@ export default function RootLayout() {
         // SIGNED_OUT navega automáticamente a /(auth)/login?warn=1
         return;
       }
-
+*/
       // Verificar si ya completó el onboarding
       try {
-        const { data: perfil } = await supabase
-          .from('perfiles').select('id').eq('id', session.user.id).maybeSingle();
-        router.replace(perfil ? '/(tabs)' : '/(auth)/onboarding');
-      } catch {
-        router.replace('/(auth)/onboarding');
-      }
+        const { data: perfil } = await supabase.from('perfiles').select('*').eq('id', session.user.id).single();
+        // Ahora también evaluamos si la carrera es la que el Trigger pone por defecto
+        if (!perfil || perfil.carrera === 'Por Definir' || perfil.carrera === 'Fase Beta') {
+          // Si no ha elegido carrera, lo obligamos a pasar por el Onboarding
+          router.replace('/(auth)/onboarding');
+        } else {
+          // Si ya tiene una carrera real (ej. "Ingeniería Industrial"), lo dejamos pasar
+          router.replace('/(tabs)');
+        }       
+    } catch {
+      router.replace('/(auth)/onboarding');
+    }
     };
 
     redirigir();

@@ -45,7 +45,7 @@ export default function ProfileScreen() {
       if (p) setPerfil(p);
 
       const { count: ct } = await supabase
-        .from('participantes').select('id', { count: 'exact', head: true }).eq('usuario_id', user.id);
+        .from('participantes').select('id', { count: 'exact', head: true }).eq('usuario_id', user.id).eq('estado_asistencia', 'asistio');
       setTotal(ct ?? 0);
 
       const { count: co } = await supabase

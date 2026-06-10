@@ -19,6 +19,7 @@ type ActividadMia = {
   cupos_min: number;
   cupos_max: number;
   duracion_horas: number;
+  creador_id: string;
   estado: string;
   participantes: { id: number }[];
 };
@@ -49,10 +50,11 @@ type RatingModalProps = {
   onClose: () => void;
   actividadId: number;
   userId: string;
+  calificadoId: string;
   onSubmit: (puntuacion: number) => void;
 };
 
-function RatingModal({ visible, onClose, actividadId, userId, onSubmit }: RatingModalProps) {
+function RatingModal({ visible, onClose, actividadId, userId, calificadoId, onSubmit }: RatingModalProps) {
   const [seleccion, setSeleccion] = useState<number | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -70,7 +72,7 @@ function RatingModal({ visible, onClose, actividadId, userId, onSubmit }: Rating
         actividad_id: actividadId,
         calificador_id: userId,
         tipo: 'actividad',
-        calificado_id: userId,
+        calificado_id: calificadoId,
         puntuacion: seleccion,
       });
       onSubmit(seleccion);
@@ -125,7 +127,8 @@ export default function ActividadesScreen() {
   const [actividades, setActividades] = useState<ActividadMia[]>([]);
   const [userId, setUserId] = useState('');
   const [cargando, setCargando] = useState(true);
-  const [ratingActId, setRatingActId] = useState<number | null>(null);
+  //const [ratingActId, setRatingActId] = useState<number | null>(null);
+  const [ratingAct, setRatingAct] = useState<{ id: number, creador_id: string } | null>(null);
   const [calificadas, setCalificadas] = useState<Set<number>>(new Set());
 
   const cargar = useCallback(async () => {
@@ -142,7 +145,8 @@ export default function ActividadesScreen() {
 
       const { data } = await supabase
         .from('actividades')
-        .select('id,titulo,categoria,fecha_hora,lugar,cupos_min,cupos_max,duracion_horas,estado,participantes(id)')
+        //.select('id,titulo,categoria,fecha_hora,lugar,cupos_min,cupos_max,duracion_horas,estado,participantes(id)')
+        .select('id,titulo,categoria,fecha_hora,lugar,cupos_min,cupos_max,duracion_horas,estado,creador_id,participantes(id)')
         .in('id', actIds);
 
       if (data) setActividades(data as ActividadMia[]);
@@ -268,7 +272,7 @@ export default function ActividadesScreen() {
           {expirado && !yaCalificada && (
             <TouchableOpacity
               style={[styles.iconBtn, { backgroundColor: Colors.accent + '22', marginTop: 6 }]}
-              onPress={() => setRatingActId(act.id)}
+              onPress={() => setRatingAct({ id: act.id, creador_id: act.creador_id })}
             >
               <Star size={18} color={Colors.accent} />
             </TouchableOpacity>
@@ -332,14 +336,14 @@ export default function ActividadesScreen() {
       )}
 
       <RatingModal
-        visible={ratingActId !== null}
-        onClose={() => setRatingActId(null)}
-        actividadId={ratingActId ?? 0}
+        visible={ratingAct !== null}
+        onClose={() => setRatingAct(null)}
+        actividadId={ratingAct?.id ?? 0}
         userId={userId}
+        calificadoId={ratingAct?.creador_id ?? ''} // <-- PASAR EL ID DEL CREADOR
         onSubmit={(p) => {
-          setCalificadas(prev => new Set([...prev, ratingActId!]));
-          setRatingActId(null);
-          Alert.alert('¡Gracias!', p === 3 ? '¡Qué buena actividad! 🌟' : p === 2 ? 'Gracias por tu opinión 👍' : 'Anotado para mejorar 📝');
+          setCalificadas(prev => new Set([...prev, ratingAct!.id]));
+          setRatingAct(null);
         }}
       />
     </View>
